@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Immo+ | Vente et location immobilière</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+:root{--c:#0f766e;--bg:#f6f7f9;--t:#1c2530;--b:#dfe3e8}
+*{box-sizing:border-box}body{margin:0;font:15px system-ui,sans-serif;background:var(--bg);color:var(--t)}
+a{color:var(--c);text-decoration:none}nav{background:#fff;border-bottom:1px solid var(--b);padding:12px 20px;display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+nav .logo{font-weight:800;font-size:20px;margin-right:auto}main{max-width:1100px;margin:auto;padding:20px}
+input,select,textarea,button{font:inherit;padding:9px;border:1px solid var(--b);border-radius:8px;background:#fff}
+button{background:var(--c);color:#fff;border:0;cursor:pointer}button.s{background:#e9edf1;color:var(--t)}button.d{background:#c0392b}
+.filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:20px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px}
+.card{background:#fff;border-radius:12px;overflow:hidden;border:1px solid var(--b);position:relative}
+.card img{width:100%;height:170px;object-fit:cover}.pad{padding:12px}.pad h3{margin:6px 0}.pad p{margin:4px 0;color:#667}
+.tag{background:var(--c);color:#fff;border-radius:6px;padding:2px 8px;font-size:12px}
+.fav{position:absolute;right:8px;top:8px;background:#fff;color:#c0392b;font-size:18px;padding:2px 9px;border-radius:20px}
+.box{background:#fff;border:1px solid var(--b);border-radius:12px;padding:18px;margin-bottom:16px}
+form.col{display:grid;gap:10px;max-width:520px}.detail{display:grid;grid-template-columns:2fr 1fr;gap:20px}
+.big{width:100%;height:380px;object-fit:cover;border-radius:12px}.thumbs{display:flex;gap:6px;margin:6px 0;overflow-x:auto}.thumbs img{height:60px;border-radius:6px;cursor:pointer}
+#map{height:280px;border-radius:12px;margin-top:12px}table{width:100%;border-collapse:collapse;background:#fff}
+td,th{padding:8px;border-bottom:1px solid var(--b);text-align:left;font-size:14px}.table{overflow-x:auto}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:16px}
+.stat{background:#fff;border:1px solid var(--b);border-radius:10px;padding:12px;text-align:center}.stat b{display:block;font-size:24px;color:var(--c)}
+@media(max-width:760px){.detail{grid-template-columns:1fr}}
+</style></head><body>
+<nav id="nav"></nav><main id="app"></main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+// ⚠️ À REMPLACER par les valeurs de Supabase > Project Settings > API
+const SUPABASE_URL='https://VOTRE-PROJET.supabase.co', SUPABASE_KEY='VOTRE_CLE_ANON_PUBLIQUE';
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+let me=null,prof=null,cats=[],favs=new Set(),F={};
+const $=s=>document.querySelector(s),app=$('#app');
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const eur=n=>new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR',maximumFractionDigits:0}).format(n);
+const ST={en_attente:'En attente',validee:'Validée',refusee:'Refusée',vendue:'Vendue',louee:'Louée'};
+const PH="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='250'%3E%3Crect width='100%25' height='100%25' fill='%23dde'/%3E%3C/svg%3E";
+const catOpts=s=>cats.map(c=>`<option value=${c.id} ${s==c.id?'selected':''}>${esc(c.name)}</option>`).join('');
+async function act(p){const{error}=await p;if(error)alert(error.message);route()}
+
+async function setUser(u){me=u||null;prof=null;favs=new Set();
+ if(me){prof=(await sb.from('profiles').select('*').eq('id',me.id).single()).data;
+  favs=new Set(((await sb.from('favorites').select('listing_id')).data||[]).map(x=>x.listing_id))}
+ const r=prof?.role;
+ $('#nav').innerHTML=`<a class=logo href="#/">🏠 Immo+</a><a href="#/">Annonces</a>`+(me?
+  `${r!='client'?'<a href="#/nouveau">Publier</a><a href="#/mes-annonces">Mes annonces</a>':''}<a href="#/favoris">Favoris</a>${r=='admin'?'<a href="#/admin">Admin</a>':''}<a href="#/profil">${esc(prof?.full_name||'Profil')}</a><a href="#" onclick="sb.auth.signOut();location.hash='#/'">Déconnexion</a>`
+  :`<a href="#/connexion">Connexion</a>`)}
+function need(roles){if(!me||(roles&&!roles.includes(prof?.role))){location.hash='#/connexion';return false}return true}
+
+function route(){const[p,a]=location.hash.slice(2).split('/');scrollTo(0,0);
+ ({bien:()=>detail(a),favoris,'mes-annonces':mine,nouveau:newForm,admin,profil,connexion:login,'nouveau-mdp':newPwd}[p]||home)()}
+
+/* ---------- Recherche ---------- */
+const card=l=>`<div class=card><a href="#/bien/${l.id}"><img src="${esc(l.photos?.[0]||PH)}" alt=""></a>
+<button class=fav onclick="fav('${l.id}',this)">${favs.has(l.id)?'♥':'♡'}</button><div class=pad>
+<span class=tag>${l.transaction=='vente'?'À vendre':'À louer'}</span><h3><a href="#/bien/${l.id}">${esc(l.title)}</a></h3>
+<b>${eur(l.price)}${l.transaction=='location'?' /mois':''}</b><p>${esc(l.city)} · ${l.surface||'–'} m² · ${l.bedrooms} ch.</p></div></div>`;
+async function fav(id,b){if(!me)return location.hash='#/connexion';
+ if(favs.has(id)){favs.delete(id);await sb.from('favorites').delete().eq('listing_id',id)}
+ else{favs.add(id);await sb.from('favorites').insert({listing_id:id})}
+ b.textContent=favs.has(id)?'♥':'♡'}
+function home(){
+ app.innerHTML=`<form id=f class=filters><input name=city placeholder="Ville / quartier"><select name=tx><option value="">Vente & location</option><option value=vente>Vente</option><option value=location>Location</option></select>
+ <select name=cat><option value="">Tous types</option>${catOpts()}</select><input name=pmin type=number placeholder="Prix min"><input name=pmax type=number placeholder="Prix max">
+ <input name=smin type=number placeholder="Surface min m²"><input name=beds type=number placeholder="Chambres min"><button>Rechercher</button></form><div id=res class=grid>Chargement…</div>`;
+ const f=$('#f');for(const k in F)if(f[k])f[k].value=F[k];
+ f.onsubmit=e=>{e.preventDefault();F=Object.fromEntries(new FormData(f));load()};load()}
+async function load(){
+ let q=sb.from('listings').select('*').eq('status','validee').order('created_at',{ascending:false});
+ const c=(F.city||'').replace(/[,()%]/g,'');if(c)q=q.or(`city.ilike.%${c}%,address.ilike.%${c}%`);
+ if(F.tx)q=q.eq('transaction',F.tx);if(F.cat)q=q.eq('category_id',F.cat);
+ if(F.pmin)q=q.gte('price',F.pmin);if(F.pmax)q=q.lte('price',F.pmax);
+ if(F.smin)q=q.gte('surface',F.smin);if(F.beds)q=q.gte('bedrooms',F.beds);
+ const{data,error}=await q;$('#res').innerHTML=error?esc(error.message):data.length?data.map(card).join(''):'Aucun résultat.'}
+async function favoris(){if(!need())return;
+ const{data}=await sb.from('favorites').select('listings(*)');const ls=(data||[]).map(x=>x.listings).filter(Boolean);
+ app.innerHTML=`<h1>Mes favoris</h1><div class=grid>${ls.map(card).join('')||'Aucun favori.'}</div>`}
+
+/* ---------- Détail ---------- */
+async function detail(id){
+ const{data:l}=await sb.from('listings').select('*,categories(name),profiles(full_name,phone,email)').eq('id',id).single();
+ if(!l)return app.innerHTML='Annonce introuvable.';const ph=l.photos?.length?l.photos:[PH],o=l.profiles||{};
+ app.innerHTML=`<a href="#/">← Retour</a><div class=detail><div><img id=big class=big src="${esc(ph[0])}"><div class=thumbs>${ph.map(p=>`<img src="${esc(p)}" onclick="big.src=this.src">`).join('')}</div>
+ <span class=tag>${l.transaction=='vente'?'À vendre':'À louer'}</span> <span class=tag style="background:#667">${ST[l.status]}</span>
+ <h1>${esc(l.title)}</h1><h2>${eur(l.price)}${l.transaction=='location'?' /mois':''}</h2>
+ <div class=box><b>Caractéristiques</b><p>${esc(l.categories?.name)} · ${l.surface||'–'} m² · ${l.bedrooms} chambres · ${l.bathrooms} salles de bain<br>📍 ${esc(l.address||'')} ${esc(l.city)}</p></div>
+ <div class=box style="white-space:pre-line">${esc(l.description)}</div><div id=map></div></div>
+ <div><div class=box><b>Contact</b><p>${esc(o.full_name)}<br>${esc(o.phone||'')}<br>${esc(o.email||'')}</p></div>
+ <form id=cf class="box col"><b>Contacter</b><input name=n placeholder="Votre nom" required value="${esc(prof?.full_name||'')}">
+ <input name=e type=email placeholder="Votre email" required value="${esc(prof?.email||'')}"><textarea name=m rows=4 placeholder="Votre message" required></textarea><button>Envoyer</button></form></div></div>`;
+ if(l.lat){const m=L.map('map').setView([l.lat,l.lng],15);L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap'}).addTo(m);L.marker([l.lat,l.lng]).addTo(m)}else $('#map').remove();
+ $('#cf').onsubmit=async e=>{e.preventDefault();const f=e.target;
+  const{error}=await sb.from('messages').insert({listing_id:id,sender_name:f.n.value,sender_email:f.e.value,body:f.m.value});
+  alert(error?error.message:'Message envoyé ✅');if(!error)f.m.value=''}}
+
+/* ---------- Propriétaire ---------- */
+function newForm(){if(!need(['owner','admin']))return;
+ app.innerHTML=`<h1>Publier un bien</h1><form id=nf class="box col"><input name=title placeholder="Titre" required><textarea name=description rows=4 placeholder="Description"></textarea>
+ <input name=price type=number min=0 placeholder="Prix (€)" required><select name=transaction><option value=vente>Vente</option><option value=location>Location</option></select>
+ <select name=category_id>${catOpts()}</select><input name=address placeholder="Adresse"><input name=city placeholder="Ville" required>
+ <input name=surface type=number placeholder="Surface m²"><input name=bedrooms type=number min=0 placeholder="Chambres"><input name=bathrooms type=number min=0 placeholder="Salles de bain">
+ <label>Photos <input name=files type=file accept="image/*" multiple></label><button>Envoyer pour validation</button></form>`;
+ $('#nf').onsubmit=async e=>{e.preventDefault();const f=e.target,btn=f.querySelector('button');btn.disabled=true;btn.textContent='Envoi…';
+  const d=Object.fromEntries(new FormData(f));delete d.files;
+  for(const k of['surface','bedrooms','bathrooms'])d[k]=d[k]===''?null:+d[k];
+  d.category_id=+d.category_id;d.photos=[];
+  for(const[i,file]of[...f.files.files].entries()){const p=`${me.id}/${Date.now()}-${i}-${file.name.replace(/[^\w.]/g,'_')}`;
+   const r=await sb.storage.from('photos').upload(p,file);if(!r.error)d.photos.push(sb.storage.from('photos').getPublicUrl(p).data.publicUrl)}
+  try{const g=await(await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q='+encodeURIComponent((d.address||'')+' '+d.city))).json();if(g[0]){d.lat=+g[0].lat;d.lng=+g[0].lon}}catch{}
+  const{error}=await sb.from('listings').insert(d);if(error){alert(error.message);btn.disabled=false;return}
+  alert('Annonce envoyée ! Elle sera visible après validation.');location.hash='#/mes-annonces'}}
+async function mine(){if(!need(['owner','admin']))return;
+ const[L,M]=await Promise.all([sb.from('listings').select('*').eq('owner_id',me.id).order('created_at',{ascending:false}),sb.from('messages').select('*,listings(title)').order('created_at',{ascending:false})]);
+ app.innerHTML=`<h1>Mes annonces</h1><div class=table><table><tr><th>Titre<th>Prix<th>Statut<th>Actions</tr>${(L.data||[]).map(l=>`<tr><td><a href="#/bien/${l.id}">${esc(l.title)}</a><td>${eur(l.price)}<td>${ST[l.status]}
+ <td><button class=s onclick="act(sb.from('listings').update({status:'${l.transaction=='vente'?'vendue':'louee'}'}).eq('id','${l.id}'))">Marquer ${l.transaction=='vente'?'vendue':'louée'}</button>
+ <button class=d onclick="confirm('Supprimer ?')&&act(sb.from('listings').delete().eq('id','${l.id}'))">Suppr.</button></tr>`).join('')}</table></div>
+ <h2>Messages reçus</h2>${(M.data||[]).map(m=>`<div class=box><b>${esc(m.listings?.title)}</b><br>${esc(m.sender_name)} (<a href="mailto:${esc(m.sender_email)}">${esc(m.sender_email)}</a>)<p>${esc(m.body)}</p></div>`).join('')||'Aucun message.'}`}
+
+/* ---------- Compte ---------- */
+function login(){
+ app.innerHTML=`<div class="box col"><h2>Connexion</h2><form id=li class=col><input name=e type=email placeholder="Email" required><input name=p type=password placeholder="Mot de passe" required><button>Se connecter</button></form>
+ <a href=# id=rp>Mot de passe oublié ?</a></div><div class="box col"><h2>Créer un compte</h2><form id=su class=col><input name=n placeholder="Nom complet" required><input name=e type=email placeholder="Email" required>
+ <input name=p type=password minlength=6 placeholder="Mot de passe (6 car. min)" required><select name=r><option value=client>Client (chercher un bien)</option><option value=owner>Propriétaire / Agence (publier)</option></select><button>S'inscrire</button></form></div>`;
+ $('#li').onsubmit=async e=>{e.preventDefault();const f=e.target;const{error}=await sb.auth.signInWithPassword({email:f.e.value,password:f.p.value});error?alert(error.message):location.hash='#/'};
+ $('#su').onsubmit=async e=>{e.preventDefault();const f=e.target;const{data,error}=await sb.auth.signUp({email:f.e.value,password:f.p.value,options:{data:{full_name:f.n.value,role:f.r.value}}});
+  if(error)return alert(error.message);if(data.session)location.hash='#/';else alert('Compte créé ! Vérifiez votre email pour confirmer.')};
+ $('#rp').onclick=async e=>{e.preventDefault();const m=prompt('Votre email :');if(!m)return;
+  const{error}=await sb.auth.resetPasswordForEmail(m,{redirectTo:location.origin+location.pathname});alert(error?error.message:'Email de réinitialisation envoyé.')}}
+function newPwd(){app.innerHTML=`<form id=np class="box col"><h2>Nouveau mot de passe</h2><input type=password name=p minlength=6 required><button>Valider</button></form>`;
+ $('#np').onsubmit=async e=>{e.preventDefault();const{error}=await sb.auth.updateUser({password:e.target.p.value});alert(error?error.message:'Mot de passe modifié ✅');if(!error)location.hash='#/'}}
+function profil(){if(!need())return;
+ app.innerHTML=`<h1>Mon profil</h1><form id=pf class="box col"><input name=n value="${esc(prof.full_name)}" placeholder="Nom"><input name=t value="${esc(prof.phone)}" placeholder="Téléphone"><input value="${esc(prof.email)}" disabled><p>Rôle : <b>${prof.role}</b></p><button>Enregistrer</button></form>`;
+ $('#pf').onsubmit=async e=>{e.preventDefault();const f=e.target;await act(sb.from('profiles').update({full_name:f.n.value,phone:f.t.value}).eq('id',me.id));setUser(me)}}
+
+/* ---------- Administration ---------- */
+async function admin(){if(!need(['admin']))return;
+ const[L,U,C]=await Promise.all([sb.from('listings').select('*').order('created_at',{ascending:false}),sb.from('profiles').select('*').order('created_at'),sb.from('categories').select('*').order('name')]);
+ const ls=L.data||[],us=U.data||[];cats=C.data||[];const n=s=>ls.filter(l=>l.status==s).length,t=x=>ls.filter(l=>l.transaction==x).length;
+ const u=(id,o)=>`act(sb.from('listings').update(${o}).eq('id','${id}'))`;
+ app.innerHTML=`<h1>Administration</h1><div class=stats>${[['Utilisateurs',us.length],['Annonces',ls.length],['En attente',n('en_attente')],['Validées',n('validee')],['Refusées',n('refusee')],['Vendues',n('vendue')],['Louées',n('louee')],['Ventes',t('vente')],['Locations',t('location')]].map(([a,b])=>`<div class=stat><b>${b}</b>${a}</div>`).join('')}</div>
+ <h2>Annonces</h2><div class=table><table><tr><th>Titre<th>Statut<th>Actions</tr>${ls.map(l=>`<tr><td><a href="#/bien/${l.id}">${esc(l.title)}</a><td>${ST[l.status]}<td>
+ <button onclick="${u(l.id,"{status:'validee'}")}">Valider</button> <button class=s onclick="${u(l.id,"{status:'refusee'}")}">Refuser</button> <button class=d onclick="confirm('Supprimer ?')&&act(sb.from('listings').delete().eq('id','${l.id}'))">Suppr.</button></tr>`).join('')}</table></div>
+ <h2>Utilisateurs</h2><div class=table><table><tr><th>Nom<th>Email<th>Rôle<th></tr>${us.map(p=>`<tr><td>${esc(p.full_name)}<td>${esc(p.email)}<td><select onchange="act(sb.from('profiles').update({role:this.value}).eq('id','${p.id}'))">${['client','owner','admin'].map(r=>`<option ${r==p.role?'selected':''}>${r}</option>`).join('')}</select>
+ <td>${p.id==me.id?'':`<button class=d onclick="confirm('Supprimer cet utilisateur ?')&&act(sb.rpc('admin_delete_user',{uid:'${p.id}'}))">Suppr.</button>`}</tr>`).join('')}</table></div>
+ <h2>Catégories</h2><div class=box>${cats.map(c=>`<span class=tag style="margin-right:6px">${esc(c.name)} <a href=# style="color:#fff" onclick="event.preventDefault();confirm('Supprimer ?')&&act(sb.from('categories').delete().eq('id',${c.id}))">✕</a></span>`).join('')}
+ <form id=cf2 style="margin-top:10px"><input name=n placeholder="Nouvelle catégorie" required> <button>Ajouter</button></form></div>`;
+ $('#cf2').onsubmit=e=>{e.preventDefault();act(sb.from('categories').insert({name:e.target.n.value}))}}
+
+addEventListener('hashchange',route);
+sb.auth.onAuthStateChange((ev,s)=>{setTimeout(async()=>{if(ev=='PASSWORD_RECOVERY')location.hash='#/nouveau-mdp';await setUser(s?.user);if(ev!='TOKEN_REFRESHED')route()},0)});
+(async()=>{const{data:{session}}=await sb.auth.getSession();await setUser(session?.user);cats=(await sb.from('categories').select('*').order('name')).data||[];route()})();
+</script></body></html>
