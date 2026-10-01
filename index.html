@@ -23,13 +23,20 @@ form.col{display:grid;gap:10px;max-width:520px}.detail{display:grid;grid-templat
 td,th{padding:8px;border-bottom:1px solid var(--b);text-align:left;font-size:14px}.table{overflow-x:auto}
 .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:16px}
 .stat{background:#fff;border:1px solid var(--b);border-radius:10px;padding:12px;text-align:center}.stat b{display:block;font-size:24px;color:var(--c)}
+.hero{background:linear-gradient(135deg,#0f766e,#134e4a);color:#fff;border-radius:16px;padding:56px 20px;text-align:center;margin-bottom:20px}
+.hero h1{margin:0 0 10px;font-size:clamp(26px,5vw,42px)}.hero p{margin:0 0 22px;opacity:.9;font-size:17px}
+.hero button{margin:4px;padding:11px 22px;font-weight:600}.hero button.s{background:#fff;color:var(--c)}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}.chip{background:#fff;border:1px solid var(--b);border-radius:20px;padding:7px 16px;color:var(--t)}.chip:hover{border-color:var(--c);color:var(--c)}
+.feat{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin:10px 0 24px}.feat .box{margin:0}.feat b{font-size:17px}
+.cta2{background:#e6f4f1;border-radius:14px;padding:26px;text-align:center;margin-bottom:24px}
+footer{text-align:center;color:#778;padding:20px;border-top:1px solid var(--b);margin-top:20px;font-size:13px}
 @media(max-width:760px){.detail{grid-template-columns:1fr}}
 </style></head><body>
 <nav id="nav"></nav><main id="app"></main>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script>
-// ⚠️ À REMPLACER par les valeurs de Supabase > Project Settings > API
+// Ces 2 valeurs sont injectées au déploiement par GitHub Actions (secrets du dépôt). Ne pas les modifier ici.
 const SUPABASE_URL='https://atfvqyhobjhcqacqutgu.supabase.co', SUPABASE_KEY='sb_publishable_5tFhgXHHWusX8wmOscx-nA_R7CkTPsT';
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 let me=null,prof=null,cats=[],favs=new Set(),F={};
@@ -62,12 +69,25 @@ async function fav(id,b){if(!me)return location.hash='#/connexion';
  if(favs.has(id)){favs.delete(id);await sb.from('favorites').delete().eq('listing_id',id)}
  else{favs.add(id);await sb.from('favorites').insert({listing_id:id})}
  b.textContent=favs.has(id)?'♥':'♡'}
+function quick(tx,cat){F={tx:tx||'',cat:cat||''};home();setTimeout(()=>$('#f').scrollIntoView({behavior:'smooth'}),60)}
 function home(){
- app.innerHTML=`<form id=f class=filters><input name=city placeholder="Ville / quartier"><select name=tx><option value="">Vente & location</option><option value=vente>Vente</option><option value=location>Location</option></select>
+ app.innerHTML=`<section class=hero><h1>Trouvez le bien qui vous ressemble</h1><p>Maisons, appartements, terrains et bureaux à vendre ou à louer, publiés par des particuliers et des agences.</p>
+ <button onclick="quick('vente')">🏡 Acheter</button><button class=s onclick="quick('location')">🔑 Louer</button>${prof?.role=='client'?'':`<button class=s onclick="location.hash='${me?'#/nouveau':'#/connexion'}'">➕ Publier une annonce</button>`}</section>
+ <div id=stats class=stats></div><h2>Parcourir par catégorie</h2><div class=chips>${cats.map(c=>`<a href=# class=chip onclick="event.preventDefault();quick('',${c.id})">${esc(c.name)}</a>`).join('')}</div>
+ <h2>Rechercher un bien</h2><form id=f class=filters><input name=city placeholder="Ville / quartier"><select name=tx><option value="">Vente & location</option><option value=vente>Vente</option><option value=location>Location</option></select>
  <select name=cat><option value="">Tous types</option>${catOpts()}</select><input name=pmin type=number placeholder="Prix min"><input name=pmax type=number placeholder="Prix max">
- <input name=smin type=number placeholder="Surface min m²"><input name=beds type=number placeholder="Chambres min"><button>Rechercher</button></form><div id=res class=grid>Chargement…</div>`;
+ <input name=smin type=number placeholder="Surface min m²"><input name=beds type=number placeholder="Chambres min"><button>Rechercher</button></form><h2>Dernières annonces</h2><div id=res class=grid>Chargement…</div>
+ <h2 style="margin-top:32px">Pourquoi Immo+ ?</h2><div class=feat>
+ <div class=box><b>🔍 Recherche précise</b><p>Filtrez par ville, prix, surface, type de bien et nombre de chambres.</p></div>
+ <div class=box><b>✅ Annonces vérifiées</b><p>Chaque annonce est validée par un administrateur avant d'être publiée.</p></div>
+ <div class=box><b>💬 Contact direct</b><p>Écrivez au propriétaire ou à l'agence en un clic, depuis la page du bien.</p></div>
+ <div class=box><b>❤️ Vos favoris</b><p>Sauvegardez vos coups de cœur et retrouvez-les dans votre espace.</p></div></div>
+ ${me?'':`<div class=cta2><h2 style="margin-top:0">Vous avez un bien à vendre ou à louer ?</h2><p>Créez un compte gratuit et publiez votre annonce en quelques minutes.</p><button onclick="location.hash='#/connexion'">Créer un compte</button></div>`}
+ <footer>© Immo+ · Cartes © OpenStreetMap contributors</footer>`;
  const f=$('#f');for(const k in F)if(f[k])f[k].value=F[k];
- f.onsubmit=e=>{e.preventDefault();F=Object.fromEntries(new FormData(f));load()};load()}
+ f.onsubmit=e=>{e.preventDefault();F=Object.fromEntries(new FormData(f));load()};load();
+ sb.from('listings').select('transaction').eq('status','validee').then(({data})=>{const d=data||[],s=$('#stats');
+  if(s)s.innerHTML=[['Biens en ligne',d.length],['À vendre',d.filter(x=>x.transaction=='vente').length],['À louer',d.filter(x=>x.transaction=='location').length]].map(([a,b])=>`<div class=stat><b>${b}</b>${a}</div>`).join('')})}
 async function load(){
  let q=sb.from('listings').select('*').eq('status','validee').order('created_at',{ascending:false});
  const c=(F.city||'').replace(/[,()%]/g,'');if(c)q=q.or(`city.ilike.%${c}%,address.ilike.%${c}%`);
