@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="fr"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Immo&agho | Vente et location immobilière</title>
+<title>Immo&amp;Agho | Vente et location immobilière</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <style>
 :root{--c:#0f766e;--bg:#f6f7f9;--t:#1c2530;--b:#dfe3e8}
@@ -52,7 +52,7 @@ async function setUser(u){me=u||null;prof=null;favs=new Set();
  if(me){prof=(await sb.from('profiles').select('*').eq('id',me.id).single()).data;
   favs=new Set(((await sb.from('favorites').select('listing_id')).data||[]).map(x=>x.listing_id))}
  const r=prof?.role;
- $('#nav').innerHTML=`<a class=logo href="#/">🏠 Immo+</a><a href="#/">Annonces</a>`+(me?
+ $('#nav').innerHTML=`<a class=logo href="#/">🏠 Immo&amp;Agho</a><a href="#/">Annonces</a>`+(me?
   `${r!='client'?'<a href="#/nouveau">Publier</a><a href="#/mes-annonces">Mes annonces</a>':''}<a href="#/favoris">Favoris</a>${r=='admin'?'<a href="#/admin">Admin</a>':''}<a href="#/profil">${esc(prof?.full_name||'Profil')}</a><a href="#" onclick="sb.auth.signOut();location.hash='#/'">Déconnexion</a>`
   :`<a href="#/connexion">Connexion</a>`)}
 function need(roles){if(!me||(roles&&!roles.includes(prof?.role))){location.hash='#/connexion';return false}return true}
@@ -77,13 +77,13 @@ function home(){
  <h2>Rechercher un bien</h2><form id=f class=filters><input name=city placeholder="Ville / quartier"><select name=tx><option value="">Vente & location</option><option value=vente>Vente</option><option value=location>Location</option></select>
  <select name=cat><option value="">Tous types</option>${catOpts()}</select><input name=pmin type=number placeholder="Prix min"><input name=pmax type=number placeholder="Prix max">
  <input name=smin type=number placeholder="Surface min m²"><input name=beds type=number placeholder="Chambres min"><button>Rechercher</button></form><h2>Dernières annonces</h2><div id=res class=grid>Chargement…</div>
- <h2 style="margin-top:32px">Pourquoi Immo+ ?</h2><div class=feat>
+ <h2 style="margin-top:32px">Pourquoi Immo&amp;Agho ?</h2><div class=feat>
  <div class=box><b>🔍 Recherche précise</b><p>Filtrez par ville, prix, surface, type de bien et nombre de chambres.</p></div>
  <div class=box><b>✅ Annonces vérifiées</b><p>Chaque annonce est validée par un administrateur avant d'être publiée.</p></div>
  <div class=box><b>💬 Contact direct</b><p>Écrivez au propriétaire ou à l'agence en un clic, depuis la page du bien.</p></div>
  <div class=box><b>❤️ Vos favoris</b><p>Sauvegardez vos coups de cœur et retrouvez-les dans votre espace.</p></div></div>
  ${me?'':`<div class=cta2><h2 style="margin-top:0">Vous avez un bien à vendre ou à louer ?</h2><p>Créez un compte gratuit et publiez votre annonce en quelques minutes.</p><button onclick="location.hash='#/connexion'">Créer un compte</button></div>`}
- <footer>© Immo+ · Cartes © OpenStreetMap contributors</footer>`;
+ <footer>© Immo&amp;Agho · Cartes © OpenStreetMap contributors</footer>`;
  const f=$('#f');for(const k in F)if(f[k])f[k].value=F[k];
  f.onsubmit=e=>{e.preventDefault();F=Object.fromEntries(new FormData(f));load()};load();
  sb.from('listings').select('transaction').eq('status','validee').then(({data})=>{const d=data||[],s=$('#stats');
